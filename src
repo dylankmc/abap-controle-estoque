@@ -1,0 +1,267 @@
+REPORT ZPROG_CONTROLE_ESTOQUE.
+
+DATA:  ls_produto   TYPE ztb_produto,
+       ls_mov       TYPE ztb_mov_estoque,
+       lt_produto   TYPE TABLE OF ztb_produto,
+       lt_mov       TYPE TABLE OF ztb_mov_estoque.
+
+DATA:  lv_ultimo_id TYPE ztb_mov_estoque-id_movimento.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE text-001.
+
+PARAMETERS:
+  p_cad  RADIOBUTTON GROUP acao DEFAULT 'X' USER-COMMAND rad,
+  p_ent  RADIOBUTTON GROUP acao,
+  p_sai  RADIOBUTTON GROUP acao,
+  p_cons RADIOBUTTON GROUP acao,
+  p_mov  RADIOBUTTON GROUP acao.
+
+SELECTION-SCREEN END OF BLOCK b1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE text-002.
+
+PARAMETERS:
+  p_idprod TYPE ztb_produto-id_produto,
+  p_nome   TYPE ztb_produto-nome_produto,
+  p_cat    TYPE ztb_produto-categoria,
+  p_peso   TYPE ztb_produto-peso,
+  p_min    TYPE ztb_produto-estoque_minimo,
+  p_qtd    TYPE ztb_produto-estoque_atual,
+  p_obs    TYPE ztb_mov_estoque-descricao.
+
+SELECTION-SCREEN END OF BLOCK b2.
+
+START-OF-SELECTION.
+
+  IF p_cad = 'X'.
+    PERFORM cadastrar_produto.
+
+  ELSEIF p_ent = 'X'.
+    PERFORM registrar_entrada.
+
+  ELSEIF p_sai = 'X'.
+    PERFORM registrar_saida.
+
+  ELSEIF p_cons = 'X'.
+    PERFORM consultar_produtos.
+
+  ELSEIF p_mov = 'X'.
+    PERFORM consultar_movimentacoes.
+
+  ENDIF.
+
+  FORM cadastrar_produto.
+
+  CLEAR ls_produto.
+
+  IF p_idprod IS INITIAL.
+    MESSAGE 'ID do produto não informado.' TYPE 'E'.
+  ENDIF.
+
+  IF p_nome IS INITIAL.
+    MESSAGE 'Nome do produto não informado.' TYPE 'E'.
+  ENDIF.
+
+  IF p_min < 0.
+    MESSAGE 'O estoque mínimo não pode ser negativo.' TYPE 'E'.
+  ENDIF.
+
+  IF p_qtd < 0.
+    MESSAGE 'O estoque atual não pode ser negativo.' TYPE 'E'.
+  ENDIF.
+
+  SELECT SINGLE *
+    FROM ztb_produto
+    INTO ls_produto
+    WHERE id_produto = p_idprod.
+
+  IF sy-subrc = 0.
+    MESSAGE 'Já existe um produto cadastrado com esse ID.' TYPE 'E'.
+  ENDIF.
+
+  CLEAR ls_produto.
+
+  ls_produto-id_produto      = p_idprod.
+  ls_produto-nome_produto    = p_nome.
+  ls_produto-categoria       = p_cat.
+  ls_produto-peso            = p_peso.
+  ls_produto-estoque_minimo  = p_min.
+  ls_produto-estoque_atual   = p_qtd.
+  ls_produto-data_criacao    = sy-datum.
+
+  INSERT ztb_produto FROM ls_produto.
+
+  IF sy-subrc = 0.
+    COMMIT WORK.
+    MESSAGE 'Produto cadastrado com sucesso.' TYPE 'S'.
+  ELSE.
+    ROLLBACK WORK.
+    MESSAGE 'Erro ao cadastrar produto.' TYPE 'E'.
+  ENDIF.
+
+ENDFORM.
+
+FORM registrar_entrada.
+
+  CLEAR ls_produto.
+
+  IF p_idprod IS INITIAL.
+    MESSAGE 'ID do produto não informado.' TYPE 'E'.
+  ENDIF.
+
+  IF p_qtd <= 0.
+    MESSAGE 'Informe uma quantidade maior que zero.' TYPE 'E'.
+  ENDIF.
+
+  SELECT SINGLE *
+    FROM ztb_produto
+    INTO ls_produto
+    WHERE id_produto = p_idprod.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Produto não encontrado' TYPE 'E'.
+  ENDIF.
+
+  ls_produto-estoque_atual = ls_produto-estoque_atual + p_qtd.
+
+  UPDATE ztb_produto FROM ls_produto.
+
+  IF sy-subrc <> 0.
+    ROLLBACK WORK.
+    MESSAGE 'Erro ao atualizar o estoque do produto.' TYPE 'E'.
+  ENDIF.
+
+  PERFORM gravar_movimento USING p_idprod
+                                 'E'
+                                 p_qtd
+                                 p_obs.
+  COMMIT WORK.
+
+  MESSAGE 'Entrada de estoque registrada com sucesso.' TYPE 'S'.
+
+ENDFORM.
+
+FORM registrar_saida .
+
+  CLEAR ls_produto.
+
+  IF p_idprod IS INITIAL.
+    MESSAGE 'ID do produto não informado.' TYPE 'E'.
+  ENDIF.
+
+  IF p_qtd <= 0.
+    MESSAGE 'Informe uma quantidade maior que zero.' TYPE 'E'.
+  ENDIF.
+
+  SELECT SINGLE *
+    FROM ztb_produto
+    INTO ls_produto
+    WHERE id_produto = p_idprod.
+
+  IF sy-subrc <> 0.
+    MESSAGE 'Produto não encontrado.' TYPE 'E'.
+  ENDIF.
+
+   IF p_qtd > ls_produto-estoque_atual.
+
+    MESSAGE 'Quantidade de saída maior que o estoque atual.' TYPE 'E'.
+
+  ELSE.
+
+    ls_produto-estoque_atual = ls_produto-estoque_atual - p_qtd.
+
+    UPDATE ztb_produto FROM ls_produto.
+
+    IF sy-subrc <> 0.
+      ROLLBACK WORK.
+      MESSAGE 'Erro ao atualizar o estoque do produto.' TYPE 'E'.
+    ENDIF.
+
+    PERFORM gravar_movimento USING p_idprod
+                                   'S'
+                                   p_qtd
+                                   p_obs.
+
+    COMMIT WORK.
+
+    MESSAGE 'Saída de estoque registrada com sucesso.' TYPE 'S'.
+
+  ENDIF.
+
+
+ENDFORM.
+
+FORM consultar_produtos .
+
+    CLEAR lt_produto.
+
+  SELECT *
+    FROM ztb_produto
+    INTO TABLE lt_produto.
+
+  IF lt_produto IS INITIAL.
+    MESSAGE 'Nenhum produto cadastrado.' TYPE 'I'.
+    RETURN.
+  ENDIF.
+
+  cl_salv_table=>factory(
+    IMPORTING
+      r_salv_table = DATA(lo_alv)
+    CHANGING
+      t_table      = lt_produto
+  ).
+
+  lo_alv->display( ).
+
+ENDFORM.
+
+FORM consultar_movimentacoes .
+
+    CLEAR lt_mov.
+
+  SELECT *
+    FROM ztb_mov_estoque
+    INTO TABLE lt_mov.
+
+  IF lt_mov IS INITIAL.
+    MESSAGE 'Nenhuma movimentação encontrada.' TYPE 'I'.
+    RETURN.
+  ENDIF.
+
+  cl_salv_table=>factory(
+    IMPORTING
+      r_salv_table = DATA(lo_alv)
+    CHANGING
+      t_table      = lt_mov
+  ).
+
+  lo_alv->display( ).
+
+ENDFORM.
+
+FORM gravar_movimento USING pv_idprod TYPE ztb_mov_estoque-id_produto
+                            pv_tipo   TYPE ztb_mov_estoque-tipo_movimento
+                            pv_qtd    TYPE ztb_mov_estoque-quantidade
+                            pv_obs    TYPE ztb_mov_estoque-descricao.
+
+  CLEAR ls_mov.
+
+  SELECT MAX( id_movimento )
+    FROM ztb_mov_estoque
+    INTO lv_ultimo_id.
+
+  ls_mov-id_movimento   = lv_ultimo_id + 1.
+  ls_mov-id_produto     = pv_idprod.
+  ls_mov-tipo_movimento = pv_tipo.
+  ls_mov-quantidade     = pv_qtd.
+  ls_mov-data_movimento = sy-datum.
+  ls_mov-descricao     = pv_obs.
+
+  INSERT ztb_mov_estoque FROM ls_mov.
+
+  IF sy-subrc <> 0.
+    ROLLBACK WORK.
+    MESSAGE 'Erro ao gravar movimentação de estoque.' TYPE 'E'.
+  ENDIF.
+
+ENDFORM.
