@@ -34,9 +34,3 @@ Através de radiobuttons, o usuário pode escolher a ação que deseja:
 - Consultar Produtos
 - Consultar Movimento
 
-## Demonstração
-
-<img width="1919" height="1029" alt="Captura de tela 2026-05-07 194421" src="https://github.com/user-attachments/assets/cfa26252-9e30-4a47-a8ff-de07eca1d0f0" />
-
-<img width="1919" height="1028" alt="Captura de tela 2026-05-07 194745" src="https://github.com/user-attachments/assets/18baff3e-580f-4c5c-8499-018a3b49badc" />
-
